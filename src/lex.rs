@@ -10,7 +10,7 @@ enum Token {
     EOF,
 }
 
-fn lex(input: &str) -> Vec<Token> {
+pub fn lex(input: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut iter = input.chars().peekable()
 
