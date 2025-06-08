@@ -15,6 +15,11 @@ enum Token {
     ElseIf,
     Goto,
     In,
+    Indent,
+    Dedent,
+    Newl,
+    And,
+    Or,
     True,
     False,
     LessThan,
@@ -37,11 +42,38 @@ enum Token {
     EOF,
 }
 
-pub fn lex(input: &str) -> Vec<Token> {
+pub fn lex(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut iter = input.chars().peekable();
+    let mut stack = vec![0];
+    let mut line_start = true;
 
     while let Some(&ch) = iter.peek() {
+        if line_start {
+            // This is prolly gonna 100% fuck me over
+            let mut indent = 0;
+            while let Some(&c) = iter.peek() {
+                if c == ' ' {
+                    indent += 1;
+                    iter.next();
+                } else if c == '\t' {
+                    indent += 4;
+                    iter.next();
+                } else {
+                    break;
+                }
+            }
+            if indent > *stack.last().unwrap() {
+                stack.push(indent);
+                tokens.push(Token::Indent);
+            } else {
+                while indent < *stack.last().unwrap() {
+                    stack.pop();
+                    tokens.push(Token::Dedent);
+                }
+            }
+            line_start = false;
+        }
         match ch {
             c if c.is_whitespace() => { iter.next(); }
             '+' => { tokens.push(Token::Plus); iter.next(); }
@@ -49,7 +81,7 @@ pub fn lex(input: &str) -> Vec<Token> {
                 iter.next();
                 if let Some('>') = iter.peek() {
                     iter.next();
-                    tokens.push(Tokens::RArrow);
+                    tokens.push(Token::RArrow);
                 } else {
                     tokens.push(Token::Minus)
                 }
@@ -65,13 +97,14 @@ pub fn lex(input: &str) -> Vec<Token> {
             ',' => { tokens.push(Token::Comma); iter.next(); }
             ';' => { tokens.push(Token::Semicolon); iter.next(); }
             '.' => { tokens.push(Token::Dot); iter.next(); }
+            '\n' => { tokens.push(Token::Newl); iter.next(); line_start = true; }
             '<' => {
                 iter.next();
                 if let Some('-') = iter.peek() {
                     iter.next();
-                    tokens.push(Tokens::LArrow);
+                    tokens.push(Token::LArrow);
                 } else {
-                    tokens.push(Tokens::LessThan)
+                    tokens.push(Token::LessThan)
                 }
             }
             '>' => { tokens.push(Token::GreaterThan); iter.next(); }
@@ -84,13 +117,18 @@ pub fn lex(input: &str) -> Vec<Token> {
                     tokens.push(Token::Equal);
                 }
             }
+            '&' => { tokens.push(Token::And); iter.next(); }
+            '|' => { tokens.push(Token::Or); iter.next(); }
             '!' => {
                 iter.next();
                 if let Some('=') = iter.peek() {
                     iter.next();
                     tokens.push(Token::NotEqual);
+                } else {
+                    tokens.push(Token::Not);
                 }
             }
+            '%' => { tokens.push(Token::Modulo); iter.next(); }
             '0'..='9' => {
                 let mut num = String::new();
                 let mut is_float = false;
@@ -119,22 +157,22 @@ pub fn lex(input: &str) -> Vec<Token> {
                     if c == '"' {
                         break;
                     }
-                    if c == '\\' {      // check for escape chars
-                        let mut s = String::new();
-                        iter.next()     // consume '\'
+                    if c == '\\' {
+                        iter.next();
                         if let Some(&esc) = iter.peek() {
                             let esc_char = match esc {
                                 'n' => '\n',
-                                "'" => "'",
+                                '\'' => '\'',
                                 '"' => '"',
                                 '\\' => '\\',
                                 other => other,
                             };
-                        s.push(esc_char);
-                        iter.next();
+                            s.push(esc_char);
+                            iter.next();
                         }
                     } else {
-
+                        s.push(c);
+                        iter.next();
                     }
                 }
                 iter.next();
@@ -162,10 +200,12 @@ pub fn lex(input: &str) -> Vec<Token> {
                     "nil" => tokens.push(Token::Nil),
                     "for" => tokens.push(Token::For),
                     "pkg" => tokens.push(Token::Package),
-                    _ => {}
+                    _ => { tokens.push(Token::Identifier(ident)); }
                 }
             }
+            _ => { return Err(format!("Unexpected character {}", ch)); }
         }
-        tokens.push(Token::EOF);
     }
+    tokens.push(Token::EOF);
+    Ok(tokens)
 }
